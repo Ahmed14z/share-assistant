@@ -9,7 +9,8 @@
     "scripting",
     "storage",
     "tabs",
-    "clipboardWrite"
+    "clipboardWrite",
+    "notifications"
   ],
   "background": {
     "service_worker": "dist/background.js"

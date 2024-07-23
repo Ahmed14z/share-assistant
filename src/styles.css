@@ -1,12 +1,130 @@
+/* Custom styles */
 body {
-  font-family: Arial, sans-serif;
+  font-family: "Inter", sans-serif;
+  background-color: #f0f4f8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
 }
 
-#content {
-  padding: 10px;
+.container {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  width: 100%;
+  max-width: 500px;
 }
 
-button {
-  margin-top: 10px;
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.description {
+  font-size: 18px;
+  color: #7f8c8d;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.output-box {
+  background-color: #ecf0f1;
+  border: 1px solid #dcdde1;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  height: 100px;
+  overflow-y: auto;
+  color: #34495e;
+}
+
+.primary-btn {
   display: block;
+  width: 100%;
+  padding: 14px;
+  background-color: #3498db;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.primary-btn:hover {
+  background-color: #2980b9;
+  box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+}
+
+.clear-btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  background-color: #e74c3c;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+  margin-top: 10px;
+}
+
+.clear-btn:hover {
+  background-color: #c0392b;
+  box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+}
+
+.subtitle {
+  font-size: 22px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-top: 30px;
+  margin-bottom: 16px;
+}
+
+.copy-history {
+  list-style-type: none;
+  padding: 0;
+}
+
+.copy-history li {
+  background-color: #ecf0f1;
+  border: 1px solid #dcdde1;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.copy-history li:hover {
+  background-color: #dcdde1;
+  box-shadow: 0 5px 15px rgba(236, 240, 241, 0.4);
+}
+
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: #2ecc71;
+  color: #ffffff;
+  padding: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.notification.show {
+  opacity: 1;
 }

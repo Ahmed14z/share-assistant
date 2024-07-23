@@ -11,40 +11,33 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "analyzeLink") {
-    // Inject content script
     chrome.scripting.executeScript(
       {
         target: { tabId: tab.id },
-        files: ["dist/content.js"],
+        files: ["content.js"],
       },
       async () => {
         console.log("Content script injected");
-
+        chrome.tabs.sendMessage(tab.id, { action: "showLoading" });
         const linkUrl = info.linkUrl;
-        console.log("Link URL:", linkUrl);
-
         try {
-          // Await the results of async functions
           const pageContent = await fetchPageContent(linkUrl);
-          console.log("Page Content:", pageContent);
-
           const summary = await getSummaryFromOpenAI(pageContent, linkUrl);
-          console.log("Summary:", summary);
-
           if (summary) {
-            // Send summary to content script to copy to clipboard
             chrome.tabs.sendMessage(tab.id, {
               action: "copyToClipboard",
               text: summary,
             });
-          } else {
-            console.error("No summary available");
+            chrome.storage.local.set({ summary });
+            addToCopyHistory(summary);
           }
         } catch (error) {
           console.error(
             "Failed to fetch page content or generate summary:",
             error
           );
+        } finally {
+          chrome.tabs.sendMessage(tab.id, { action: "hideLoading" });
         }
       }
     );
@@ -62,20 +55,10 @@ async function fetchPageContent(url) {
     if (response.status !== 200) {
       throw new Error("Network response was not ok");
     }
-
-    // Load HTML with Cheerio
     const $ = cheerio.load(response.data);
-
-    // Remove unwanted elements
     $("script, style, noscript, iframe, link, meta").remove();
-
-    // Extract text from relevant elements
     let pageContent = $("body").text();
-
-    // Clean up text
-    pageContent = pageContent.replace(/\s+/g, " ").trim(); // Replace multiple spaces and trim
-
-    console.log("Fetched page content:", pageContent);
+    pageContent = pageContent.replace(/\s+/g, " ").trim();
     return pageContent;
   } catch (error) {
     console.error("Error fetching page content:", error);
@@ -101,11 +84,18 @@ async function getSummaryFromOpenAI(text, linkUrl) {
       temperature: 0.7,
     }),
   });
-
   const data = await response.json();
   if (data.choices && data.choices.length > 0) {
     return `Link: ${linkUrl}\n\nSummary: ${data.choices[0].message.content}`;
   } else {
     throw new Error("No summary returned from OpenAI");
   }
+}
+
+function addToCopyHistory(summary) {
+  chrome.storage.local.get(["copyHistory"], (result) => {
+    const copyHistory = result.copyHistory || [];
+    copyHistory.unshift(summary);
+    chrome.storage.local.set({ copyHistory: copyHistory.slice(0, 5) });
+  });
 }

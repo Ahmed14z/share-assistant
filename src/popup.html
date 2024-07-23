@@ -2,15 +2,21 @@
 <html>
   <head>
     <title>Smart Link Sharer</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link href="styles.css" rel="stylesheet" />
   </head>
-  <body>
-    <div id="content">
-      <h1>Smart Link Sharer</h1>
-      <p>Here is the summary of the selected link:</p>
-      <div id="output"></div>
-      <button id="copy">Copy Summary</button>
+  <body
+    class="font-sans bg-gray-100 p-4 flex items-center justify-center min-h-screen"
+  >
+    <div id="content" class="container">
+      <h1 class="title">Smart Link Sharer</h1>
+      <p class="description">Here is the summary of the selected link:</p>
+      <div id="output" class="output-box"></div>
+      <button id="copy" class="primary-btn">Copy Summary</button>
+      <h2 class="subtitle">Copy History</h2>
+      <ul id="copy-history" class="copy-history"></ul>
+      <button id="clear-history" class="clear-btn">Clear History</button>
     </div>
+    <div id="notification" class="notification"></div>
     <script src="popup.js"></script>
   </body>
 </html>
