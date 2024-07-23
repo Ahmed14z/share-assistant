@@ -11,11 +11,7 @@
     "tabs",
     "clipboardWrite",
     "notifications",
-    "cookies",
-
-    "webNavigation",
-    "webRequest",
-    "webRequestBlocking"
+    "cookies"
   ],
   "background": {
     "service_worker": "dist/background.js"

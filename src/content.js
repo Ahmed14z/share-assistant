@@ -5,35 +5,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "extractContent") {
     const { linkUrl } = message;
     console.log("Extracting content from", linkUrl);
+    chrome.runtime.sendMessage(
+      { action: "fetchPageContent", url: linkUrl },
+      (response) => {
+        if (response.error) {
+          console.error("Error fetching page content:", response.error);
+          return;
+        }
 
-    // Directly access the DOM of the page
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(
-      document.documentElement.outerHTML,
-      "text/html"
+        console.log("Page content fetched, processing with Readability");
+        const text = response.text;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, "text/html");
+
+        // Remove unnecessary elements
+        const scripts = doc.querySelectorAll(
+          "script, style, noscript, iframe, link, meta"
+        );
+        scripts.forEach((el) => el.remove());
+
+        // Use Readability to parse the document
+        const reader = new Readability(doc);
+        const article = reader.parse();
+        const pageContent = article
+          ? article.textContent
+          : "Failed to extract content";
+
+        console.log(
+          "Content extracted, sending to background script for summarization"
+        );
+        chrome.runtime.sendMessage({
+          action: "summarizeContent",
+          pageContent,
+          linkUrl,
+        });
+      }
     );
-
-    // Remove unnecessary elements
-    const scripts = doc.querySelectorAll(
-      "script, style, noscript, iframe, link, meta"
-    );
-    scripts.forEach((el) => el.remove());
-
-    // Use Readability to parse the document
-    const reader = new Readability(doc);
-    const article = reader.parse();
-    const pageContent = article
-      ? article.textContent
-      : "Failed to extract content";
-
-    console.log(
-      "Content extracted, sending to background script for summarization"
-    );
-    chrome.runtime.sendMessage({
-      action: "summarizeContent",
-      pageContent,
-      linkUrl,
-    });
   }
 
   if (message.action === "copyToClipboard") {

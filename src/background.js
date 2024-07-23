@@ -26,17 +26,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-chrome.webNavigation.onCompleted.addListener(
-  (details) => {
-    console.log("Web navigation completed", details);
-    chrome.scripting.executeScript({
-      target: { tabId: details.tabId },
-      files: ["dist/content.js"],
-    });
-  },
-  { urls: ["<all_urls>"] }
-);
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("Message received in background script", message);
   if (message.action === "fetchPageContent") {
