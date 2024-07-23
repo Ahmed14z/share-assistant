@@ -1,7 +1,23 @@
-console.log("Content script loaded and running");
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.action === "extractContent") {
+    const { linkUrl } = message;
+    try {
+      const response = await fetch(linkUrl);
+      const text = await response.text();
+      const pageContent = new DOMParser().parseFromString(text, "text/html")
+        .body.innerText;
+      chrome.runtime.sendMessage({
+        action: "summarizeContent",
+        pageContent,
+        linkUrl,
+      });
+    } catch (error) {
+      console.error("Error extracting content:", error);
+    }
+  }
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Message received:", message);
   if (message.action === "copyToClipboard") {
     const text = message.text;
     const input = document.createElement("textarea");

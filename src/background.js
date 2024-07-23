@@ -14,15 +14,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     chrome.scripting.executeScript(
       {
         target: { tabId: tab.id },
-        files: ["content.js"],
+        files: ["dist/content.js"],
       },
       async () => {
         console.log("Content script injected");
         chrome.tabs.sendMessage(tab.id, { action: "showLoading" });
         const linkUrl = info.linkUrl;
         try {
-          const pageContent = await fetchPageContent(linkUrl);
+          const pageContent = await fetchPageContentWithCookies(linkUrl);
+          console.log("Fetched page content:", pageContent);
           const summary = await getSummaryFromOpenAI(pageContent, linkUrl);
+          console.log("Generated summary:", summary);
           if (summary) {
             chrome.tabs.sendMessage(tab.id, {
               action: "copyToClipboard",
@@ -44,12 +46,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-async function fetchPageContent(url) {
+async function fetchPageContentWithCookies(url) {
   try {
+    const cookies = await getCookies(url);
+    const cookieString = cookies
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
     const response = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        Cookie: cookieString,
       },
     });
     if (response.status !== 200) {
@@ -66,6 +73,18 @@ async function fetchPageContent(url) {
   }
 }
 
+function getCookies(url) {
+  return new Promise((resolve, reject) => {
+    chrome.cookies.getAll({ url }, (cookies) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve(cookies);
+      }
+    });
+  });
+}
+
 async function getSummaryFromOpenAI(text, linkUrl) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -74,7 +93,7 @@ async function getSummaryFromOpenAI(text, linkUrl) {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: "gpt-4",
       messages: [
         {
           role: "user",
