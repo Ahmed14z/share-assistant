@@ -1,7 +1,5 @@
-const axios = require("axios");
-const cheerio = require("cheerio");
-
 chrome.runtime.onInstalled.addListener(() => {
+  console.log("Extension installed");
   chrome.contextMenus.create({
     id: "analyzeLink",
     title: "Summarize this link with AI",
@@ -9,83 +7,61 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "analyzeLink") {
+    console.log("Context menu item clicked");
     chrome.scripting.executeScript(
       {
         target: { tabId: tab.id },
         files: ["dist/content.js"],
       },
-      async () => {
+      () => {
         console.log("Content script injected");
-        chrome.tabs.sendMessage(tab.id, { action: "showLoading" });
-        const linkUrl = info.linkUrl;
-        try {
-          const pageContent = await fetchPageContentWithCookies(linkUrl);
-          console.log("Fetched page content:", pageContent);
-          const summary = await getSummaryFromOpenAI(pageContent, linkUrl);
-          console.log("Generated summary:", summary);
-          if (summary) {
-            chrome.tabs.sendMessage(tab.id, {
-              action: "copyToClipboard",
-              text: summary,
-            });
-            chrome.storage.local.set({ summary });
-            addToCopyHistory(summary);
-          }
-        } catch (error) {
-          console.error(
-            "Failed to fetch page content or generate summary:",
-            error
-          );
-        } finally {
-          chrome.tabs.sendMessage(tab.id, { action: "hideLoading" });
-        }
+        chrome.tabs.sendMessage(tab.id, {
+          action: "extractContent",
+          linkUrl: info.linkUrl,
+        });
       }
     );
   }
 });
 
-async function fetchPageContentWithCookies(url) {
-  try {
-    const cookies = await getCookies(url);
-    const cookieString = cookies
-      .map((cookie) => `${cookie.name}=${cookie.value}`)
-      .join("; ");
-    const response = await axios.get(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Cookie: cookieString,
-      },
-    });
-    if (response.status !== 200) {
-      throw new Error("Network response was not ok");
-    }
-    const $ = cheerio.load(response.data);
-    $("script, style, noscript, iframe, link, meta").remove();
-    let pageContent = $("body").text();
-    pageContent = pageContent.replace(/\s+/g, " ").trim();
-    return pageContent;
-  } catch (error) {
-    console.error("Error fetching page content:", error);
-    throw error;
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("Message received in background script", message);
+  if (message.action === "fetchPageContent") {
+    console.log("Fetching page content for", message.url);
+    fetch(message.url)
+      .then((response) => response.text())
+      .then((text) => {
+        console.log("Page content fetched");
+        sendResponse({ text });
+      })
+      .catch((error) => {
+        console.error("Error fetching page content:", error);
+        sendResponse({ error: error.message });
+      });
+    return true; // Keep the message channel open for sendResponse
   }
-}
 
-function getCookies(url) {
-  return new Promise((resolve, reject) => {
-    chrome.cookies.getAll({ url }, (cookies) => {
-      if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
-      } else {
-        resolve(cookies);
-      }
-    });
-  });
-}
+  if (message.action === "summarizeContent") {
+    const { pageContent, linkUrl } = message;
+    console.log("Summarizing content from", linkUrl);
+    getSummaryFromOpenAI(pageContent, linkUrl)
+      .then((summary) => {
+        console.log("Summary generated:", summary);
+        chrome.tabs.sendMessage(sender.tab.id, {
+          action: "copyToClipboard",
+          text: summary,
+        });
+        chrome.storage.local.set({ summary });
+        addToCopyHistory(summary);
+      })
+      .catch((error) => console.error("Failed to generate summary:", error));
+  }
+});
 
 async function getSummaryFromOpenAI(text, linkUrl) {
+  console.log("Calling OpenAI API");
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -93,7 +69,7 @@ async function getSummaryFromOpenAI(text, linkUrl) {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -105,6 +81,7 @@ async function getSummaryFromOpenAI(text, linkUrl) {
   });
   const data = await response.json();
   if (data.choices && data.choices.length > 0) {
+    console.log("OpenAI API response received");
     return `Link: ${linkUrl}\n\nSummary: ${data.choices[0].message.content}`;
   } else {
     throw new Error("No summary returned from OpenAI");
@@ -112,6 +89,7 @@ async function getSummaryFromOpenAI(text, linkUrl) {
 }
 
 function addToCopyHistory(summary) {
+  console.log("Adding summary to copy history");
   chrome.storage.local.get(["copyHistory"], (result) => {
     const copyHistory = result.copyHistory || [];
     copyHistory.unshift(summary);
