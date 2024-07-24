@@ -9,7 +9,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("copy").addEventListener("click", () => {
     const summary = document.getElementById("output").innerText;
     copyToClipboard(summary);
-    addToCopyHistory(summary);
   });
 
   document.getElementById("clear-history").addEventListener("click", () => {
@@ -18,25 +17,14 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function copyToClipboard(text) {
-  const input = document.createElement("textarea");
-  input.style.position = "fixed";
-  input.style.opacity = 0;
-  input.value = text;
-  document.body.appendChild(input);
-  input.focus();
-  input.select();
-  document.execCommand("Copy");
-  document.body.removeChild(input);
-  showNotification("Summary copied to clipboard!");
-}
-
-function addToCopyHistory(summary) {
-  chrome.storage.local.get(["copyHistory"], (result) => {
-    const copyHistory = result.copyHistory || [];
-    copyHistory.unshift(summary);
-    chrome.storage.local.set({ copyHistory: copyHistory.slice(0, 5) });
-    updateCopyHistory(copyHistory);
-  });
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      showNotification("Summary copied to clipboard!");
+    })
+    .catch((err) => {
+      console.error("Failed to copy text: ", err);
+    });
 }
 
 function clearCopyHistory() {
@@ -69,3 +57,11 @@ function showNotification(message) {
     notification.classList.remove("show");
   }, 3000);
 }
+
+// Listen for updates from the background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "updateSummary") {
+    document.getElementById("output").innerText = message.summary;
+    updateCopyHistory(message.copyHistory);
+  }
+});

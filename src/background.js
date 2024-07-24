@@ -1,66 +1,59 @@
+const languages = [
+  { code: "en", name: "English" },
+  { code: "fr", name: "French" },
+  { code: "de", name: "German" },
+  { code: "it", name: "Italian" },
+  { code: "ko", name: "Korean" },
+];
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Extension installed");
   chrome.contextMenus.create({
-    id: "analyzeLink",
+    id: "summarizeLink",
     title: "Summarize this link with AI",
     contexts: ["link"],
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "analyzeLink") {
-    console.log("Context menu item clicked");
-    chrome.scripting.executeScript(
-      {
-        target: { tabId: tab.id },
-        files: ["dist/content.js"],
-      },
-      () => {
-        console.log("Content script injected");
-        chrome.tabs.sendMessage(tab.id, {
-          action: "extractContent",
-          linkUrl: info.linkUrl,
-        });
-      }
-    );
+  if (info.menuItemId === "summarizeLink") {
+    chrome.tabs.sendMessage(tab.id, {
+      action: "showLanguageSelector",
+      linkUrl: info.linkUrl,
+    });
   }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Message received in background script", message);
-  if (message.action === "fetchPageContent") {
-    console.log("Fetching page content for", message.url);
-    fetch(message.url)
-      .then((response) => response.text())
-      .then((text) => {
-        console.log("Page content fetched");
-        sendResponse({ text });
-      })
-      .catch((error) => {
-        console.error("Error fetching page content:", error);
-        sendResponse({ error: error.message });
-      });
-    return true; // Keep the message channel open for sendResponse
-  }
-
-  if (message.action === "summarizeContent") {
-    const { pageContent, linkUrl } = message;
-    console.log("Summarizing content from", linkUrl);
-    getSummaryFromOpenAI(pageContent, linkUrl)
-      .then((summary) => {
-        console.log("Summary generated:", summary);
-        chrome.tabs.sendMessage(sender.tab.id, {
-          action: "copyToClipboard",
-          text: summary,
-        });
-        chrome.storage.local.set({ summary });
-        addToCopyHistory(summary);
-      })
-      .catch((error) => console.error("Failed to generate summary:", error));
+  if (message.action === "summarizeWithLanguage") {
+    const { linkUrl, language } = message;
+    fetchAndSummarize(linkUrl, language, sender.tab.id);
   }
 });
 
-async function getSummaryFromOpenAI(text, linkUrl) {
+async function fetchAndSummarize(linkUrl, language, tabId) {
+  try {
+    const response = await fetch(linkUrl);
+    const pageContent = await response.text();
+    const summary = await getSummaryFromOpenAI(pageContent, linkUrl, language);
+
+    chrome.tabs.sendMessage(tabId, {
+      action: "copySummary",
+      summary: summary,
+    });
+
+    chrome.storage.local.set({ summary });
+    addToCopyHistory(summary);
+  } catch (error) {
+    console.error("Error in summarization process:", error);
+    chrome.tabs.sendMessage(tabId, {
+      action: "showError",
+      error: "Failed to generate summary. Please try again.",
+    });
+  }
+}
+
+async function getSummaryFromOpenAI(text, linkUrl, language) {
   console.log("Calling OpenAI API");
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -73,7 +66,7 @@ async function getSummaryFromOpenAI(text, linkUrl) {
       messages: [
         {
           role: "user",
-          content: `Summarize the following text from the link: ${linkUrl}\n\n${text}`,
+          content: `Summarize the following text from the link: ${linkUrl}\n\nProvide the summary in ${language}.\n\n${text}`,
         },
       ],
       temperature: 0.7,
@@ -82,14 +75,13 @@ async function getSummaryFromOpenAI(text, linkUrl) {
   const data = await response.json();
   if (data.choices && data.choices.length > 0) {
     console.log("OpenAI API response received");
-    return `Link: ${linkUrl}\n\nSummary: ${data.choices[0].message.content}`;
+    return `Link: ${linkUrl}\n\nSummary (${language}):\n${data.choices[0].message.content}`;
   } else {
     throw new Error("No summary returned from OpenAI");
   }
 }
 
 function addToCopyHistory(summary) {
-  console.log("Adding summary to copy history");
   chrome.storage.local.get(["copyHistory"], (result) => {
     const copyHistory = result.copyHistory || [];
     copyHistory.unshift(summary);
