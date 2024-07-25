@@ -1,27 +1,39 @@
 class Summarizer {
   async getSummaryFromOpenAI(text, linkUrl, language) {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: `Summarize the following text from the link: ${linkUrl}\n\nMake it as a catchy social media post in ${language} with a maximum of 280 characters.\n\n${text} `,
+    try {
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
-        ],
-        temperature: 0.7,
-      }),
-    });
-    const data = await response.json();
-    if (data.choices && data.choices.length > 0) {
-      return `${data.choices[0].message.content} \n\n`;
-    } else {
-      throw new Error("No summary returned from OpenAI");
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a helpful assistant that creates catchy social media posts with a strict maximum of 250 characters and one link without [].",
+              },
+              {
+                role: "user",
+                content: `Summarize the following text from the link: ${linkUrl}\n\nMake it as a catchy social media post in ${language} \n\n${text} with a maximum of 250 characters.`,
+              },
+            ],
+            temperature: 0.7,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (data.choices && data.choices.length > 0) {
+        return `${data.choices[0].message.content} \n\n`;
+      } else {
+        throw new Error("No summary returned from OpenAI");
+      }
+    } catch (error) {
+      console.error("Error fetching summary from OpenAI:", error);
     }
   }
 

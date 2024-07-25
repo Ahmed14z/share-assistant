@@ -14,6 +14,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === "extractContent") {
     const { linkUrl, language, sharePanel } = message;
+    console.log(`Starting content extraction for URL: ${linkUrl}`);
 
     firecrawl
       .scrapeUrl(linkUrl)
@@ -45,6 +46,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       })
       .finally(() => {
+        console.log(`Finished processing URL: ${linkUrl}`);
         chrome.runtime.sendMessage({ action: "operationComplete" });
       });
 
