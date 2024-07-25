@@ -1,3 +1,77 @@
+import { Readability } from "@mozilla/readability";
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "extractContent") {
+    const { linkUrl, language } = message;
+    chrome.runtime.sendMessage(
+      { action: "fetchPageContent", url: linkUrl },
+      (response) => {
+        if (response.error) {
+          console.error("Error fetching page content:", response.error);
+          return;
+        }
+
+        const text = response.text;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, "text/html");
+
+        // Remove unnecessary elements
+        const scripts = doc.querySelectorAll(
+          "script, style, noscript, iframe, link, meta"
+        );
+        scripts.forEach((el) => el.remove());
+
+        // Use Readability to parse the document
+        const reader = new Readability(doc);
+        const article = reader.parse();
+        const pageContent = article
+          ? article.textContent
+          : "Failed to extract content";
+
+        chrome.runtime.sendMessage({
+          action: "summarizeContent",
+          pageContent,
+          linkUrl,
+          language,
+        });
+        chrome.runtime.sendMessage({ action: "operationComplete" });
+      }
+    );
+  }
+
+  if (message.action === "showLanguageSelector") {
+    showLanguageSelector(message.linkUrl);
+  } else if (message.action === "copySummary") {
+    copyToClipboard(message.summary);
+    showNotification("Summary copied to clipboard!");
+    chrome.runtime.sendMessage({ action: "operationComplete" });
+  } else if (message.action === "showError") {
+    showNotification(message.error, 5000);
+    chrome.runtime.sendMessage({ action: "operationComplete" });
+  }
+});
+
+function showNotification(message, duration = 3000) {
+  const notification = document.createElement("div");
+  notification.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #333;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    z-index: 10000;
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  setTimeout(() => {
+    document.body.removeChild(notification);
+  }, duration);
+}
+
 function showLanguageSelector(linkUrl) {
   const languages = [
     { code: "en", name: "English" },
@@ -54,28 +128,8 @@ function showLanguageSelector(linkUrl) {
       language: selectedLanguage,
     });
     showNotification("Summarizing...", 5000);
+    chrome.runtime.sendMessage({ action: "operationComplete" });
   });
-}
-
-function showNotification(message, duration = 3000) {
-  const notification = document.createElement("div");
-  notification.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background-color: #333;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    z-index: 10000;
-  `;
-  notification.textContent = message;
-  document.body.appendChild(notification);
-  setTimeout(() => {
-    document.body.removeChild(notification);
-  }, duration);
 }
 
 function copyToClipboard(text) {
@@ -86,13 +140,3 @@ function copyToClipboard(text) {
   document.execCommand("copy");
   document.body.removeChild(textarea);
 }
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "showLanguageSelector") {
-    showLanguageSelector(message.linkUrl);
-  } else if (message.action === "copySummary") {
-    copyToClipboard(message.summary);
-    showNotification("Summary copied to clipboard!");
-  } else if (message.action === "showError") {
-    showNotification(message.error, 5000);
-  }
-});

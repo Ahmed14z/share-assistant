@@ -6,6 +6,9 @@ const languages = [
   { code: "ko", name: "Korean" },
 ];
 
+const injectedTabs = new Set();
+const ongoingOperations = new Map();
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Extension installed");
   chrome.contextMenus.create({
@@ -15,46 +18,116 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" && !injectedTabs.has(tabId)) {
+    chrome.scripting
+      .executeScript({
+        target: { tabId: tabId },
+        files: ["dist/content.js"],
+      })
+      .then(() => {
+        console.log(`Content script injected in tab ${tabId}`);
+        injectedTabs.add(tabId);
+      })
+      .catch((error) => {
+        console.warn(`Failed to inject content script in tab ${tabId}:`, error);
+      });
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  injectedTabs.delete(tabId);
+  ongoingOperations.delete(tabId);
+});
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  console.log("Context menu item clicked");
   if (info.menuItemId === "summarizeLink") {
-    chrome.tabs.sendMessage(tab.id, {
-      action: "showLanguageSelector",
-      linkUrl: info.linkUrl,
-    });
+    if (ongoingOperations.has(tab.id)) {
+      console.log("Operation already in progress for this tab");
+      return;
+    }
+
+    ongoingOperations.set(tab.id, true);
+
+    chrome.tabs.sendMessage(
+      tab.id,
+      {
+        action: "showLanguageSelector",
+        linkUrl: info.linkUrl,
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn(
+            "Error sending message to content script:",
+            chrome.runtime.lastError.message
+          );
+          ongoingOperations.delete(tab.id);
+        }
+      }
+    );
+
+    // Set a timeout to clear the operation if it takes too long
+    setTimeout(() => {
+      if (ongoingOperations.has(tab.id)) {
+        console.log("Operation timed out, resetting state");
+        ongoingOperations.delete(tab.id);
+      }
+    }, 10000); // 30 seconds timeout
   }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("Received message in background script:", message);
+
   if (message.action === "summarizeWithLanguage") {
     const { linkUrl, language } = message;
-    fetchAndSummarize(linkUrl, language, sender.tab.id);
+    chrome.tabs.sendMessage(sender.tab.id, {
+      action: "extractContent",
+      linkUrl: linkUrl,
+      language: language,
+    });
+  }
+
+  if (message.action === "fetchPageContent") {
+    fetch(message.url)
+      .then((response) => response.text())
+      .then((text) => {
+        sendResponse({ text });
+      })
+      .catch((error) => {
+        sendResponse({ error: error.message });
+      });
+    return true;
+  }
+
+  if (message.action === "summarizeContent") {
+    const { pageContent, linkUrl, language } = message;
+    getSummaryFromOpenAI(pageContent, linkUrl, language)
+      .then((summary) => {
+        chrome.tabs.sendMessage(sender.tab.id, {
+          action: "copySummary",
+          summary: summary,
+        });
+        chrome.storage.local.set({ summary });
+        addToCopyHistory(summary);
+      })
+      .catch((error) => {
+        chrome.tabs.sendMessage(sender.tab.id, {
+          action: "showError",
+          error: "Failed to generate summary. Please try again.",
+        });
+      })
+      .finally(() => {
+        ongoingOperations.delete(sender.tab.id);
+      });
+  }
+
+  if (message.action === "operationComplete") {
+    ongoingOperations.delete(sender.tab.id);
   }
 });
-
-async function fetchAndSummarize(linkUrl, language, tabId) {
-  try {
-    const response = await fetch(linkUrl);
-    const pageContent = await response.text();
-    const summary = await getSummaryFromOpenAI(pageContent, linkUrl, language);
-
-    chrome.tabs.sendMessage(tabId, {
-      action: "copySummary",
-      summary: summary,
-    });
-
-    chrome.storage.local.set({ summary });
-    addToCopyHistory(summary);
-  } catch (error) {
-    console.error("Error in summarization process:", error);
-    chrome.tabs.sendMessage(tabId, {
-      action: "showError",
-      error: "Failed to generate summary. Please try again.",
-    });
-  }
-}
-
 async function getSummaryFromOpenAI(text, linkUrl, language) {
-  console.log("Calling OpenAI API");
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -66,7 +139,7 @@ async function getSummaryFromOpenAI(text, linkUrl, language) {
       messages: [
         {
           role: "user",
-          content: `Summarize the following text from the link: ${linkUrl}\n\nProvide the summary in ${language}.\n\n${text}`,
+          content: `Summarize the following text from the link: ${linkUrl}\n\nMake it as a catchy twitter post in ${language}.\n\n${text}`,
         },
       ],
       temperature: 0.7,
@@ -74,8 +147,7 @@ async function getSummaryFromOpenAI(text, linkUrl, language) {
   });
   const data = await response.json();
   if (data.choices && data.choices.length > 0) {
-    console.log("OpenAI API response received");
-    return `Link: ${linkUrl}\n\nSummary (${language}):\n${data.choices[0].message.content}`;
+    return `${data.choices[0].message.content} \n\nRead more: ${linkUrl}`;
   } else {
     throw new Error("No summary returned from OpenAI");
   }
@@ -88,3 +160,23 @@ function addToCopyHistory(summary) {
     chrome.storage.local.set({ copyHistory: copyHistory.slice(0, 5) });
   });
 }
+
+// Add a new function to reset the extension state
+function resetExtensionState() {
+  injectedTabs.clear();
+  ongoingOperations.clear();
+  console.log("Extension state reset");
+}
+
+// Add a context menu item to reset the extension
+chrome.contextMenus.create({
+  id: "resetExtension",
+  title: "Reset Extension",
+  contexts: ["action"],
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "resetExtension") {
+    resetExtensionState();
+  }
+});
