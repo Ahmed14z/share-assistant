@@ -1,21 +1,22 @@
-const path = require("path");
-const Dotenv = require("dotenv-webpack");
+
+const Dotenv = require('dotenv-webpack');
+const path = require('path');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   entry: {
-    background: "./src/background.js",
-    content: "./src/content.js",
-    popup: "./src/popup.js",
-  },
+  "background": "./src/background/Background.js",
+  "content": "./src/content/content.js",
+  "popup": "./src/popup.js"
+},
   output: {
     filename: "[name].js",
     path: path.resolve(__dirname, "dist"),
   },
-  plugins: [new Dotenv()],
   module: {
     rules: [
       {
-        test: /\.js$/,
+        test: /\.js$/, // Ensure this is correctly formatted as a regex
         exclude: /node_modules/,
         use: {
           loader: "babel-loader",
@@ -27,12 +28,21 @@ module.exports = {
     ],
   },
   resolve: {
-    fallback: {
-      fs: false,
-      path: false,
-      os: false,
-    },
-  },
+  "fallback": {
+    "fs": false,
+    "path": false,
+    "os": false
+  }
+},
   mode: "development",
   devtool: "source-map", // Change this from "eval" to "source-map"
+  plugins: [
+    new Dotenv(),
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: "src/popup.html", to: "popup.html" },
+        { from: "icons", to: "icons" }
+      ]
+    })
+  ],
 };

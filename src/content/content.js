@@ -1,53 +1,75 @@
-import { Readability } from "@mozilla/readability";
+import FirecrawlApp from "@mendable/firecrawl-js";
+
+// Initialize Firecrawl with your API key
+const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRE_CRAWL_API });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("Content script received message:", message);
+
+  if (message.action === "ping") {
+    console.log("Ping received, responding...");
+    sendResponse({ status: "ready" });
+    return true; // Keep the message channel open for sendResponse
+  }
+
   if (message.action === "extractContent") {
-    const { linkUrl, language } = message;
-    chrome.runtime.sendMessage(
-      { action: "fetchPageContent", url: linkUrl },
-      (response) => {
-        if (response.error) {
-          console.error("Error fetching page content:", response.error);
-          return;
+    const { linkUrl, language, sharePanel } = message;
+
+    firecrawl
+      .scrapeUrl(linkUrl)
+      .then((scrapeResult) => {
+        if (scrapeResult.success) {
+          const pageContent = scrapeResult.data.content;
+          console.log("Content extracted successfully:", pageContent);
+
+          chrome.runtime.sendMessage({
+            action: "summarizeContent",
+            pageContent,
+            linkUrl,
+            language,
+            sharePanel,
+          });
+        } else {
+          console.error("Error scraping content:", scrapeResult.error);
+          chrome.runtime.sendMessage({
+            action: "showError",
+            error: "Failed to extract content",
+          });
         }
-
-        const text = response.text;
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, "text/html");
-
-        // Remove unnecessary elements
-        const scripts = doc.querySelectorAll(
-          "script, style, noscript, iframe, link, meta"
-        );
-        scripts.forEach((el) => el.remove());
-
-        // Use Readability to parse the document
-        const reader = new Readability(doc);
-        const article = reader.parse();
-        const pageContent = article
-          ? article.textContent
-          : "Failed to extract content";
-
+      })
+      .catch((error) => {
+        console.error("Error using Firecrawl:", error);
         chrome.runtime.sendMessage({
-          action: "summarizeContent",
-          pageContent,
-          linkUrl,
-          language,
+          action: "showError",
+          error: "Failed to extract content",
         });
+      })
+      .finally(() => {
         chrome.runtime.sendMessage({ action: "operationComplete" });
-      }
-    );
+      });
+
+    return true; // Keep the message channel open for sendResponse
   }
 
   if (message.action === "showLanguageSelector") {
-    showLanguageSelector(message.linkUrl);
-  } else if (message.action === "copySummary") {
+    showLanguageSelector(message.linkUrl, message.sharePanel);
+    sendResponse({ status: "languageSelectorShown" });
+    return true; // Keep the message channel open for sendResponse
+  }
+
+  if (message.action === "copySummary") {
     copyToClipboard(message.summary);
     showNotification("Summary copied to clipboard!");
     chrome.runtime.sendMessage({ action: "operationComplete" });
-  } else if (message.action === "showError") {
+    sendResponse({ status: "summaryCopied" });
+    return true; // Keep the message channel open for sendResponse
+  }
+
+  if (message.action === "showError") {
     showNotification(message.error, 5000);
     chrome.runtime.sendMessage({ action: "operationComplete" });
+    sendResponse({ status: "errorShown" });
+    return true; // Keep the message channel open for sendResponse
   }
 });
 
@@ -72,7 +94,7 @@ function showNotification(message, duration = 3000) {
   }, duration);
 }
 
-function showLanguageSelector(linkUrl) {
+function showLanguageSelector(linkUrl, sharePanel) {
   const languages = [
     { code: "en", name: "English" },
     { code: "fr", name: "French" },
@@ -126,8 +148,9 @@ function showLanguageSelector(linkUrl) {
       action: "summarizeWithLanguage",
       linkUrl: linkUrl,
       language: selectedLanguage,
+      sharePanel: sharePanel,
     });
-    showNotification("Summarizing...", 5000);
+    showNotification("Summarizing...", 7000);
     chrome.runtime.sendMessage({ action: "operationComplete" });
   });
 }
