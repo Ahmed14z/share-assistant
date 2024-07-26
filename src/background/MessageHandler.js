@@ -10,15 +10,16 @@ class MessageHandler {
     console.log("Received message in background script:", message);
 
     if (message.action === "summarizeWithLanguage") {
-      const { linkUrl, language, sharePanel } = message;
+      const { linkUrl, language, sharePanel, selection, isSelection } = message;
       chrome.tabs.sendMessage(sender.tab.id, {
         action: "extractContent",
         linkUrl: linkUrl,
         language: language,
         sharePanel: sharePanel,
+        selection: selection,
+        isSelection: isSelection,
       });
     }
-
     if (message.action === "fetchPageContent") {
       fetch(message.url)
         .then((response) => response.text())
@@ -32,9 +33,18 @@ class MessageHandler {
     }
 
     if (message.action === "summarizeContent") {
-      const { pageContent, linkUrl, language, sharePanel } = message;
+      const { pageContent, language, sharePanel, isSelection, url } = message;
+      console.log("Is selection:", isSelection); // Add this log
+
+      let summaryPrompt;
+      if (isSelection) {
+        summaryPrompt = `Summarize the following selected text in ${language} with a maximum of 250 characters:\n\n${pageContent}`;
+      } else {
+        summaryPrompt = `Summarize the following text from the link: ${url}\n\nMake it as a catchy social media post in ${language} \n\n${pageContent} with a maximum of 250 characters.`;
+      }
+
       this.summarizer
-        .getSummaryFromOpenAI(pageContent, linkUrl, language)
+        .getSummaryFromOpenAI(summaryPrompt, url, language)
         .then((summary) => {
           chrome.tabs.sendMessage(sender.tab.id, {
             action: "copySummary",
@@ -44,9 +54,9 @@ class MessageHandler {
           this.summarizer.addToCopyHistory(summary);
           console.log("share panel", sharePanel);
           if (sharePanel === "reddit") {
-            this.summarizer.shareOnReddit(linkUrl, sender.tab.id);
+            this.summarizer.shareOnReddit(url, sender.tab.id);
           } else if (sharePanel === "twitter") {
-            this.summarizer.shareOnTwitter(linkUrl, sender.tab.id);
+            this.summarizer.shareOnTwitter(url, sender.tab.id);
           }
         })
         .catch((error) => {

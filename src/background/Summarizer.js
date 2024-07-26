@@ -1,5 +1,5 @@
 class Summarizer {
-  async getSummaryFromOpenAI(text, linkUrl, language) {
+  async getSummaryFromOpenAI(prompt, linkUrl, language) {
     try {
       const response = await fetch(
         "https://api.openai.com/v1/chat/completions",
@@ -15,11 +15,11 @@ class Summarizer {
               {
                 role: "system",
                 content:
-                  "You are a helpful assistant that creates catchy social media posts with a strict maximum of 250 characters and one link without [].",
+                  "You are a helpful assistant that creates catchy social media posts with a strict maximum of 250 characters",
               },
               {
                 role: "user",
-                content: `Summarize the following text from the link: ${linkUrl}\n\nMake it as a catchy social media post in ${language} \n\n${text} with a maximum of 250 characters.`,
+                content: prompt,
               },
             ],
             temperature: 0.7,

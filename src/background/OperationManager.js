@@ -7,7 +7,59 @@ class OperationManager {
     this.summarizer = new Summarizer();
   }
 
-  summarizeAndShare(url, tabId, platform = "") {
+  summarizeText(selectionText, tabId, isSelection = true) {
+    if (ongoingOperations.has(tabId)) {
+      console.log("Operation already in progress for this tab");
+      return;
+    }
+
+    // console.log("Selection text:", selectionText, isSelection);
+    ongoingOperations.set(tabId, true);
+
+    chrome.tabs.sendMessage(tabId, { action: "ping" }, (response) => {
+      if (chrome.runtime.lastError || response.status !== "ready") {
+        console.error(
+          "Error in ping message or content script not ready:",
+          chrome.runtime.lastError
+        );
+
+        chrome.scripting
+          .executeScript({
+            target: { tabId: tabId },
+            files: ["dist/content.js"],
+          })
+          .then(() => {
+            console.log("Content script injected successfully.");
+
+            this.retryMessageSend(tabId, {
+              action: "showLanguageSelector",
+              selection: selectionText,
+              isSelection: isSelection,
+            });
+          })
+          .catch((error) => {
+            console.error("Failed to inject content script:", error);
+            ongoingOperations.delete(tabId);
+          });
+      } else {
+        console.log("Content script is ready, sending message...");
+        this.retryMessageSend(tabId, {
+          action: "showLanguageSelector",
+          selection: selectionText,
+          isSelection: isSelection,
+        });
+      }
+    });
+
+    setTimeout(() => {
+      if (ongoingOperations.has(tabId)) {
+        console.log("Operation timed out, resetting state");
+        ongoingOperations.delete(tabId);
+      }
+    }, 30000);
+  }
+
+  summarizeAndShare(url, tabId, platform = "", isSelection = false) {
     if (ongoingOperations.has(tabId)) {
       console.log("Operation already in progress for this tab");
       return;
@@ -35,6 +87,7 @@ class OperationManager {
               action: "showLanguageSelector",
               linkUrl: url,
               sharePanel: platform,
+              isSelection: isSelection,
             });
           })
           .catch((error) => {
@@ -47,6 +100,7 @@ class OperationManager {
           action: "showLanguageSelector",
           linkUrl: url,
           sharePanel: platform,
+          isSelection: isSelection,
         });
       }
     });
